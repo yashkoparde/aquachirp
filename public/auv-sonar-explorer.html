@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Adaptive Sonar AUV — Interactive Explorer</title>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  :root{
+    --bg-deep:#031A24;
+    --bg-mid:#04283A;
+    --panel:#062736;
+    --panel-2:#0A3347;
+    --border:#134A5E;
+    --text:#DCEFF3;
+    --text-dim:#7FA9B5;
+    --accent:#3FD2C7;
+    --accent-2:#F2A65A;
+    --proto:#3FD98B;
+    --proposed:#5FA8E8;
+    --danger:#E85D5D;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--bg-deep);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    overflow:hidden;
+  }
+  #app{position:relative;width:100vw;height:100vh;}
+  #canvas-wrap{position:absolute;inset:0;}
+  canvas{display:block;}
+
+  /* Top bar */
+  #topbar{
+    position:absolute;top:0;left:0;right:0;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;
+    background:linear-gradient(180deg, rgba(3,20,30,0.92) 0%, rgba(3,20,30,0.0) 100%);
+    pointer-events:none;
+    z-index:20;
+  }
+  #topbar .brand{pointer-events:auto;}
+  #topbar h1{
+    font-size:15px;font-weight:600;margin:0;letter-spacing:0.3px;color:var(--text);
+  }
+  #topbar p{margin:2px 0 0;font-size:11.5px;color:var(--text-dim);}
+  #tabs{
+    display:flex;gap:6px;pointer-events:auto;
+    background:rgba(6,39,54,0.85);
+    border:1px solid var(--border);
+    border-radius:9999px;padding:4px 6px;
+    backdrop-filter:blur(6px);
+  }
+  #tabs button{
+    background:transparent;border:none;color:var(--text-dim);
+    font-size:12px;padding:7px 16px;border-radius:9999px;cursor:pointer;
+    font-weight:600;transition:all .15s ease;
+  }
+  #tabs button.active{background:var(--accent);color:#052228;}
+  #tabs button:hover:not(.active){color:var(--text);background:rgba(255,255,255,0.06);}
+
+  /* Legend */
+  #legend{
+    position:absolute;top:70px;right:22px;z-index:15;
+    background:rgba(6,39,54,0.85);border:1px solid var(--border);
+    border-radius:9999px;padding:8px 16px;font-size:11.5px;
+    backdrop-filter:blur(6px);
+  }
+  #legend .row{display:flex;align-items:center;gap:8px;margin:4px 0;color:var(--text-dim);}
+  #legend .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+  /* Bottom control dock */
+  #dock{
+    position:absolute;left:22px;right:22px;bottom:18px;z-index:20;
+    display:flex;gap:12px;align-items:flex-end;
+    pointer-events:none;
+  }
+  .panel{
+    pointer-events:auto;
+    background:rgba(6,39,54,0.90);
+    border:1px solid var(--border);
+    border-radius:18px;
+    backdrop-filter:blur(8px);
+  }
+  #controls-panel{
+    flex:1.1;padding:14px 16px;max-width:360px;
+  }
+  #sonar-panel{
+    flex:1;padding:14px 16px;max-width:340px;
+  }
+  #actions-panel{
+    display:flex;flex-direction:column;gap:8px;padding:10px;
+  }
+  .panel h3{
+    margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;
+    color:var(--accent);font-weight:600;
+  }
+  .slider-row{margin-bottom:10px;}
+  .slider-row:last-child{margin-bottom:0;}
+  .slider-row label{
+    display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:4px;
+  }
+  .slider-row label span.val{color:var(--text);font-weight:600;}
+  input[type=range]{
+    -webkit-appearance:none;width:100%;height:4px;border-radius:9999px;
+    background:var(--panel-2);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:2px solid #052228;
+  }
+  .scenario-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+  .scenario-btn{
+    flex:1;min-width:76px;
+    background:var(--panel-2);border:1px solid var(--border);color:var(--text-dim);
+    font-size:10.5px;padding:7px 12px;border-radius:9999px;cursor:pointer;font-weight:600;
+    transition:all .15s ease;text-align:center;
+  }
+  .scenario-btn:hover{border-color:var(--accent);color:var(--text);background:rgba(63,210,199,0.12);}
+
+  .sonar-stat{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);
+  }
+  .sonar-stat:last-child{border-bottom:none;}
+  .sonar-stat .label{font-size:11.5px;color:var(--text-dim);}
+  .sonar-stat .value{font-size:14px;font-weight:600;color:var(--text);}
+  .sonar-stat .value small{font-size:10px;color:var(--text-dim);font-weight:400;margin-left:2px;}
+  #power-mode-badge{
+    display:inline-block;margin-top:8px;padding:5px 12px;border-radius:9999px;
+    font-size:10.5px;font-weight:700;letter-spacing:0.3px;
+    background:rgba(63,210,199,0.15);color:var(--accent);
+  }
+  #waveform-canvas{width:100%;height:44px;margin-top:10px;border-radius:10px;background:rgba(0,0,0,0.25);}
+  .disclaimer{font-size:9.5px;color:var(--text-dim);opacity:0.7;margin-top:8px;font-style:italic;}
+
+  .action-btn{
+    background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    font-size:11.5px;padding:10px 18px;border-radius:9999px;cursor:pointer;font-weight:600;
+    display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;transition:all .15s ease;
+  }
+  .action-btn:hover{border-color:var(--accent);background:rgba(63,210,199,0.12);}
+  .action-btn.active{background:var(--accent);color:#052228;border-color:var(--accent);}
+  .action-btn.sonar-active{background:var(--accent-2);color:#2A1500;border-color:var(--accent-2);}
+
+  /* Component info card */
+  #info-card{
+    position:absolute;top:70px;left:22px;z-index:15;
+    width:280px;background:rgba(6,39,54,0.94);border:1px solid var(--accent);
+    border-radius:12px;padding:16px;backdrop-filter:blur(8px);
+    display:none;
+  }
+  #info-card.show{display:block;}
+  #info-card .cat-badge{
+    display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:0.4px;
+    padding:3px 8px;border-radius:5px;margin-bottom:8px;text-transform:uppercase;
+  }
+  #info-card h4{margin:0 0 8px;font-size:14.5px;font-weight:700;color:var(--text);}
+  #info-card p{margin:0 0 10px;font-size:12.5px;line-height:1.5;color:var(--text-dim);}
+  #info-card .connection{
+    font-size:10.5px;color:var(--accent);font-family:'Courier New',monospace;
+    background:rgba(0,0,0,0.2);padding:8px 10px;border-radius:6px;line-height:1.6;
+  }
+  #info-card .close-x{
+    position:absolute;top:10px;right:12px;cursor:pointer;color:var(--text-dim);
+    font-size:16px;line-height:1;
+  }
+  #info-card .close-x:hover{color:var(--text);}
+
+  #hover-tooltip{
+    position:absolute;pointer-events:none;z-index:25;
+    background:rgba(6,39,54,0.95);border:1px solid var(--accent);
+    border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;
+    color:var(--text);display:none;transform:translate(-50%,-130%);
+    white-space:nowrap;
+  }
+
+  #hint{
+    position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
+    font-size:11px;color:var(--text-dim);z-index:5;pointer-events:none;
+    background:rgba(3,20,30,0.6);padding:5px 12px;border-radius:20px;
+  }
+  #hint.hidden{display:none;}
+
+  @media (max-width: 900px){
+    #dock{flex-direction:column;align-items:stretch;}
+    #controls-panel,#sonar-panel{max-width:none;}
+    #legend{display:none;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvas-wrap"></div>
+
+  <div id="topbar">
+    <div class="brand">
+      <h1>Adaptive Sonar AUV — Explorer</h1>
+      <p>Software-defined sonar transmitter payload · autonomous underwater vehicle</p>
+    </div>
+    <div id="tabs">
+      <button class="active" data-mode="assembled">Assembled</button>
+      <button data-mode="exploded">Exploded view</button>
+    </div>
+  </div>
+
+  <div id="legend">
+    <div class="row"><span class="dot" style="background:var(--proto)"></span>Prototype component (built)</div>
+    <div class="row"><span class="dot" style="background:var(--proposed)"></span>Proposed AUV integration</div>
+  </div>
+
+  <div id="info-card">
+    <span class="close-x" id="info-close">&times;</span>
+    <span class="cat-badge" id="info-badge"></span>
+    <h4 id="info-title"></h4>
+    <p id="info-desc"></p>
+    <div class="connection" id="info-connection" style="display:none;"></div>
+  </div>
+
+  <div id="hover-tooltip"></div>
+
+  <div id="hint">Drag to rotate · scroll to zoom · click a component</div>
+
+  <div id="dock">
+    <div id="controls-panel" class="panel">
+      <h3>Environment control panel</h3>
+      <div class="slider-row">
+        <label>Depth <span class="val" id="depth-val">120 m</span></label>
+        <input type="range" id="depth" min="0" max="1000" value="120">
+      </div>
+      <div class="slider-row">
+        <label>Water temperature <span class="val" id="temp-val">18 °C</span></label>
+        <input type="range" id="temp" min="-2" max="32" value="18">
+      </div>
+      <div class="slider-row">
+        <label>Turbidity <span class="val" id="turb-val">20 NTU</span></label>
+        <input type="range" id="turb" min="0" max="100" value="20">
+      </div>
+      <div class="slider-row">
+        <label>Pressure <span class="val" id="press-val">2.2 bar</span></label>
+        <input type="range" id="press" min="1" max="101" value="22">
+      </div>
+      <div class="slider-row">
+        <label>Battery level <span class="val" id="batt-val">82%</span></label>
+        <input type="range" id="batt" min="0" max="100" value="82">
+      </div>
+      <div class="scenario-row">
+        <button class="scenario-btn" data-preset="clear">Clear water</button>
+        <button class="scenario-btn" data-preset="turbid">Turbid water</button>
+        <button class="scenario-btn" data-preset="deep">Deep water</button>
+        <button class="scenario-btn" data-preset="lowbatt">Low battery</button>
+      </div>
+    </div>
+
+    <div id="sonar-panel" class="panel">
+      <h3>Adaptive sonar output</h3>
+      <div class="sonar-stat"><span class="label">Recommended frequency</span><span class="value" id="freq-out">—</span></div>
+      <div class="sonar-stat"><span class="label">Frequency sweep</span><span class="value" id="sweep-out">—</span></div>
+      <div class="sonar-stat"><span class="label">Pulse duration</span><span class="value" id="pulse-out">—</span></div>
+      <div class="sonar-stat"><span class="label">Amplitude</span><span class="value" id="amp-out">—</span></div>
+      <div id="power-mode-badge">—</div>
+      <canvas id="waveform-canvas"></canvas>
+      <div class="disclaimer">Prototype operating parameters — adaptive recommendation, target for experimental validation.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== COMPONENT DATA ===================== */
+const COMPONENTS = {
+  hull: {
+    title: "Outer hull",
+    category: "proposed",
+    desc: "Hydrodynamic pressure-tolerant shell that houses and protects the AUV's internal systems.",
+  },
+  sensorNose: {
+    title: "Environmental sensor module",
+    category: "proto",
+    desc: "Monitors underwater operating conditions — depth, temperature, turbidity — feeding the adaptive controller.",
+    connection: "Sensors\n→ STM32\n→ Waveform engine\n→ DAC"
+  },
+  controller: {
+    title: "STM32 controller",
+    category: "proto",
+    desc: "Reads environmental inputs, selects transmission parameters, and configures DMA and hardware timers.",
+    connection: "Sensors\n→ STM32\n→ Waveform engine\n→ DAC"
+  },
+  payload: {
+    title: "Adaptive sonar payload",
+    category: "proto",
+    desc: "Independent, modular software-defined waveform generation and transmission unit — installable inside or attached to the AUV.",
+    connection: "STM32\n→ Waveform engine\n→ DAC → Analog frontend"
+  },
+  dac: {
+    title: "DAC module",
+    category: "proto",
+    desc: "Converts digital waveform data generated by the controller into an analog transmission signal.",
+    connection: "STM32 → DMA/Timer\n→ DAC\n→ Analog frontend"
+  },
+  frontend: {
+    title: "Analog frontend",
+    category: "proto",
+    desc: "Filters, conditions and amplifies the sonar waveform before power amplification.",
+    connection: "DAC\n→ Analog frontend\n→ Power amplifier"
+  },
+  amplifier: {
+    title: "Power amplifier",
+    category: "proto",
+    desc: "Provides the transmission power required to drive the sonar transducer.",
+    connection: "Analog frontend\n→ Power amplifier\n→ Transducer"
+  },
+  transducer: {
+    title: "Sonar transducer",
+    category: "proto",
+    desc: "Converts electrical sonar signals into acoustic waves emitted into the water.",
+    connection: "Power amplifier\n→ Transducer\n→ Acoustic wave"
+  },
+  battery: {
+    title: "Battery module",
+    category: "proposed",
+    desc: "Provides power for the AUV platform and the onboard sonar system."
+  },
+  housing: {
+    title: "Pressure-resistant electronics housing",
+    category: "proposed",
+    desc: "Sealed enclosure protecting sensitive electronic components from ambient water pressure."
+  },
+  propulsion: {
+    title: "Propulsion system",
+    category: "proposed",
+    desc: "Thruster and propeller assembly providing forward movement through water."
+  },
+  fins: {
+    title: "Control fins",
+    category: "proposed",
+    desc: "Assist with vehicle navigation, steering and stability underwater."
+  }
+};
+const CAT_COLOR = { proto: 0x3FD98B, proposed: 0x5FA8E8 };
+const CAT_LABEL = { proto: "Prototype component", proposed: "Proposed AUV integration" };
+
+/* ===================== THREE SETUP ===================== */
+const wrap = document.getElementById('canvas-wrap');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x04283A, 0.035);
+
+const camera = new THREE.PerspectiveCamera(42, wrap.clientWidth/wrap.clientHeight, 0.1, 200);
+camera.position.set(11, 5, 12);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.setClearColor(0x04283A);
+wrap.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 6;
+controls.maxDistance = 30;
+controls.target.set(0,0,0);
+
+// lighting — subtle underwater feel
+scene.add(new THREE.AmbientLight(0x6fa8c9, 0.55));
+const key = new THREE.DirectionalLight(0xbfe8f0, 0.9);
+key.position.set(8,10,6);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x3fd2c7, 0.4);
+rim.position.set(-8,-4,-6);
+scene.add(rim);
+const fillBelow = new THREE.PointLight(0x1a5f75, 0.6, 30);
+fillBelow.position.set(0,-6,0);
+scene.add(fillBelow);
+
+// underwater particles
+const particleGeo = new THREE.BufferGeometry();
+const pCount = 260;
+const positions = new Float32Array(pCount*3);
+for(let i=0;i<pCount;i++){
+  positions[i*3]=(Math.random()-0.5)*60;
+  positions[i*3+1]=(Math.random()-0.5)*30;
+  positions[i*3+2]=(Math.random()-0.5)*60;
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+const particleMat = new THREE.PointsMaterial({color:0x8fd8e0, size:0.05, transparent:true, opacity:0.35});
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// seafloor grid, faint
+const grid = new THREE.GridHelper(60,30,0x1a5f75,0x0d3a4a);
+grid.position.y = -7;
+grid.material.transparent = true;
+grid.material.opacity = 0.25;
+scene.add(grid);
+
+/* ===================== BUILD AUV ===================== */
+const auv = new THREE.Group();
+scene.add(auv);
+
+function mat(hex, opts={}){
+  return new THREE.MeshStandardMaterial(Object.assign({color:hex, roughness:0.45, metalness:0.35}, opts));
+}
+function makePart(key, mesh, basePos, explodeOffset){
+  const g = new THREE.Group();
+  g.add(mesh);
+  g.position.copy(basePos);
+  g.userData = { key, basePos: basePos.clone(), explodeOffset: explodeOffset, baseMat: mesh.material };
+  auv.add(g);
+  interactiveParts.push(g);
+  return g;
+}
+
+const interactiveParts = [];
+
+// Outer hull (semi-transparent shell, along X axis, nose at +X)
+const hullShape = new THREE.CylinderGeometry(1.15, 0.95, 7.5, 24, 1, true);
+hullShape.rotateZ(Math.PI/2);
+const hullMesh = new THREE.Mesh(hullShape, mat(0x5FA8E8, {transparent:true, opacity:0.16, roughness:0.2, metalness:0.1, side:THREE.DoubleSide}));
+makePart('hull', hullMesh, new THREE.Vector3(0,0,0), new THREE.Vector3(0,3.2,0));
+
+// Nose sensor dome
+const noseMesh = new THREE.Mesh(new THREE.SphereGeometry(0.85,20,16, 0, Math.PI*2, 0, Math.PI/2), mat(0x3FD98B,{roughness:0.3}));
+noseMesh.rotation.z = -Math.PI/2;
+noseMesh.position.x = 0;
+const noseGroup = makePart('sensorNose', noseMesh, new THREE.Vector3(4.05,0,0), new THREE.Vector3(2.4,0,0));
+
+// STM32 controller (small chip block inside body, front-mid)
+const ctrlMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.55,0.9), mat(0x3FD98B,{roughness:0.5}));
+makePart('controller', ctrlMesh, new THREE.Vector3(2.0,0.35,0), new THREE.Vector3(0,2.3,1.6));
+
+// Adaptive sonar payload module (cylindrical modular unit)
+const payloadMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,1.5,20), mat(0x3FD98B,{roughness:0.4}));
+payloadMesh.rotation.z = Math.PI/2;
+makePart('payload', payloadMesh, new THREE.Vector3(1.1,0,0), new THREE.Vector3(0,-2.2,2.2));
+
+// DAC module (small board)
+const dacMesh = new THREE.Mesh(new THREE.BoxGeometry(0.45,0.35,0.6), mat(0x3FD98B,{roughness:0.5}));
+makePart('dac', dacMesh, new THREE.Vector3(0.55,0.55,0.35), new THREE.Vector3(1.6,2.6,1.0));
+
+// Analog frontend (board)
+const feMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.35,0.65), mat(0x3FD98B,{roughness:0.5}));
+makePart('frontend', feMesh, new THREE.Vector3(-0.05,0.55,-0.35), new THREE.Vector3(-1.7,2.6,-1.0));
+
+// Power amplifier
+const paMesh = new THREE.Mesh(new THREE.BoxGeometry(0.55,0.4,0.7), mat(0x3FD98B,{roughness:0.5}));
+makePart('amplifier', paMesh, new THREE.Vector3(-0.7,0.35,0), new THREE.Vector3(0,2.9,-1.9));
+
+// Sonar transducer (underside disc near nose)
+const tdGeo = new THREE.CylinderGeometry(0.5,0.5,0.25,24);
+const tdMesh = new THREE.Mesh(tdGeo, mat(0x3FD98B,{roughness:0.3,metalness:0.6}));
+tdMesh.rotation.x = Math.PI/2;
+const transducerGroup = makePart('transducer', tdMesh, new THREE.Vector3(3.1,-1.0,0), new THREE.Vector3(1.6,-2.6,0));
+
+// Battery module
+const battMesh = new THREE.Mesh(new THREE.BoxGeometry(1.4,0.9,1.5), mat(0x5FA8E8,{roughness:0.5}));
+makePart('battery', battMesh, new THREE.Vector3(-1.9,0,0), new THREE.Vector3(0,-3.0,-2.4));
+
+// Pressure-resistant electronics housing (inner capsule)
+const housingMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.72,0.72,3.4,20), mat(0x5FA8E8,{transparent:true,opacity:0.35,roughness:0.25,metalness:0.5}));
+housingMesh.rotation.z = Math.PI/2;
+makePart('housing', housingMesh, new THREE.Vector3(0.6,0,0), new THREE.Vector3(0,3.6,-2.6));
+
+// Propulsion system (rear cylinder + blades)
+const propGroup = new THREE.Group();
+const propBody = new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.75,1.3,20), mat(0x5FA8E8,{roughness:0.4,metalness:0.5}));
+propBody.rotation.z = Math.PI/2;
+propGroup.add(propBody);
+const bladeMat = mat(0x9AC9DE,{roughness:0.3,metalness:0.6});
+for(let i=0;i<4;i++){
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.75,0.22), bladeMat);
+  blade.position.x = -0.85;
+  blade.rotation.x = (Math.PI/2)*i;
+  propGroup.add(blade);
+}
+makePart('propulsion', propGroup, new THREE.Vector3(-4.6,0,0), new THREE.Vector3(-2.6,0,0));
+
+// Control fins (4 around rear)
+const finGroup = new THREE.Group();
+const finMat = mat(0x5FA8E8,{roughness:0.4});
+const finAngles = [0,Math.PI/2,Math.PI,-Math.PI/2];
+finAngles.forEach(a=>{
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.9,0.55), finMat);
+  fin.position.set(0, Math.cos(a)*0.95, Math.sin(a)*0.95);
+  fin.rotation.x = a;
+  finGroup.add(fin);
+});
+makePart('fins', finGroup, new THREE.Vector3(-3.5,0,0), new THREE.Vector3(-1.8,0,0));
+
+auv.rotation.y = 0.4;
+
+/* ===================== RAYCASTING / INTERACTION ===================== */
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let hoveredGroup = null;
+let selectedGroup = null;
+
+function findInteractiveAncestor(obj){
+  let o = obj;
+  while(o){
+    if(o.userData && o.userData.key) return o;
+    o = o.parent;
+  }
+  return null;
+}
+function setEmissive(group, on){
+  group.traverse(c=>{
+    if(c.isMesh && c.material && c.material.emissive){
+      c.material.emissive.set(on ? 0xffffff : 0x000000);
+      c.material.emissiveIntensity = on ? 0.35 : 0;
+    }
+  });
+}
+
+const tooltip = document.getElementById('hover-tooltip');
+const canvasEl = renderer.domElement;
+
+function onPointerMove(e){
+  const rect = canvasEl.getBoundingClientRect();
+  mouse.x = ((e.clientX-rect.left)/rect.width)*2-1;
+  mouse.y = -((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(auv.children, true);
+  if(hits.length){
+    const g = findInteractiveAncestor(hits[0].object);
+    if(g !== hoveredGroup){
+      if(hoveredGroup && hoveredGroup !== selectedGroup) setEmissive(hoveredGroup, false);
+      hoveredGroup = g;
+      if(hoveredGroup && hoveredGroup !== selectedGroup) setEmissive(hoveredGroup, true);
+    }
+    if(g){
+      tooltip.style.display='block';
+      tooltip.style.left = (e.clientX)+'px';
+      tooltip.style.top = (e.clientY)+'px';
+      tooltip.textContent = COMPONENTS[g.userData.key].title;
+      canvasEl.style.cursor='pointer';
+    }
+  } else {
+    if(hoveredGroup && hoveredGroup !== selectedGroup) setEmissive(hoveredGroup, false);
+    hoveredGroup = null;
+    tooltip.style.display='none';
+    canvasEl.style.cursor='default';
+  }
+}
+function onClick(e){
+  if(!hoveredGroup) { closeInfo(); return; }
+  selectGroup(hoveredGroup);
+}
+canvasEl.addEventListener('pointermove', onPointerMove);
+canvasEl.addEventListener('click', onClick);
+
+const infoCard = document.getElementById('info-card');
+const infoBadge = document.getElementById('info-badge');
+const infoTitle = document.getElementById('info-title');
+const infoDesc = document.getElementById('info-desc');
+const infoConn = document.getElementById('info-connection');
+
+function selectGroup(g){
+  if(selectedGroup) setEmissive(selectedGroup, false);
+  selectedGroup = g;
+  setEmissive(selectedGroup, true);
+  const data = COMPONENTS[g.userData.key];
+  infoBadge.textContent = CAT_LABEL[data.category];
+  infoBadge.style.background = data.category==='proto' ? 'rgba(63,217,139,0.18)' : 'rgba(95,168,232,0.18)';
+  infoBadge.style.color = data.category==='proto' ? '#3FD98B' : '#5FA8E8';
+  infoTitle.textContent = data.title;
+  infoDesc.textContent = data.desc;
+  if(data.connection){
+    infoConn.style.display='block';
+    infoConn.textContent = data.connection;
+  } else {
+    infoConn.style.display='none';
+  }
+  infoCard.classList.add('show');
+}
+function closeInfo(){
+  if(selectedGroup) setEmissive(selectedGroup, false);
+  selectedGroup = null;
+  infoCard.classList.remove('show');
+}
+document.getElementById('info-close').addEventListener('click', closeInfo);
+
+/* ===================== EXPLODED VIEW ===================== */
+let explodeTarget = 0; // 0 = assembled, 1 = exploded
+let explodeCurrent = 0;
+document.querySelectorAll('#tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    explodeTarget = btn.dataset.mode === 'exploded' ? 1 : 0;
+  });
+});
+
+/* ===================== AUTO ROTATE / RESET ===================== */
+let autoRotate = false;
+
+/* ===================== ENVIRONMENT + SONAR LOGIC ===================== */
+const sliders = {
+  depth: document.getElementById('depth'),
+  temp: document.getElementById('temp'),
+  turb: document.getElementById('turb'),
+  press: document.getElementById('press'),
+  batt: document.getElementById('batt'),
+};
+const outs = {
+  depth: document.getElementById('depth-val'),
+  temp: document.getElementById('temp-val'),
+  turb: document.getElementById('turb-val'),
+  press: document.getElementById('press-val'),
+  batt: document.getElementById('batt-val'),
+};
+function fmt(v,unit){ return v+' '+unit; }
+
+function updateEnv(){
+  const depth = +sliders.depth.value;
+  const temp = +sliders.temp.value;
+  const turb = +sliders.turb.value;
+  const press = +sliders.press.value;
+  const batt = +sliders.batt.value;
+
+  outs.depth.textContent = fmt(depth,'m');
+  outs.temp.textContent = fmt(temp,'°C');
+  outs.turb.textContent = fmt(turb,'NTU');
+  outs.press.textContent = fmt((press/10).toFixed(1),'bar');
+  outs.batt.textContent = batt+'%';
+
+  // adaptive recommendation formulas (prototype heuristics)
+  const freq = Math.max(20, Math.min(200, 180 - turb*1.35 - depth*0.01));
+  const sweepLow = Math.max(15, freq-15);
+  const sweepHigh = Math.min(210, freq+15);
+  const pulse = 0.5 + (depth/1000)*2.3 + (turb/100)*0.6;
+  const amplitude = 5 + (depth/1000)*15 + (press/101)*4;
+  let powerMode, powerColor;
+  if(batt <= 30){ powerMode='Low battery alert (≤30%)'; powerColor='#E85D5D'; }
+  else if(batt < 60){ powerMode='Balanced mode'; powerColor='#F2A65A'; }
+  else { powerMode='Full power mode'; powerColor='#3FD2C7'; }
+
+  document.getElementById('freq-out').innerHTML = freq.toFixed(1)+'<small>kHz</small>';
+  document.getElementById('sweep-out').innerHTML = sweepLow.toFixed(0)+'–'+sweepHigh.toFixed(0)+'<small>kHz</small>';
+  document.getElementById('pulse-out').innerHTML = pulse.toFixed(2)+'<small>ms</small>';
+  document.getElementById('amp-out').innerHTML = amplitude.toFixed(1)+'<small>Vpp</small>';
+  const badge = document.getElementById('power-mode-badge');
+  badge.textContent = powerMode;
+  badge.style.color = powerColor;
+  badge.style.background = powerColor+'26';
+
+  drawWaveform(freq, amplitude);
+  return {depth,temp,turb,press,batt,freq};
+}
+Object.values(sliders).forEach(s=>s.addEventListener('input', updateEnv));
+
+const presets = {
+  clear:  {depth:60, temp:24, turb:5,  press:16, batt:85},
+  turbid: {depth:80, temp:20, turb:85, press:18, batt:70},
+  deep:   {depth:850,temp:6,  turb:15, press:96, batt:60},
+  lowbatt:{depth:100,temp:18, turb:20, press:20, batt:30},
+};
+document.querySelectorAll('.scenario-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const p = presets[btn.dataset.preset];
+    sliders.depth.value=p.depth; sliders.temp.value=p.temp; sliders.turb.value=p.turb;
+    sliders.press.value=p.press; sliders.batt.value=p.batt;
+    updateEnv();
+    runSignalFlow();
+  });
+});
+
+// waveform canvas
+const wCanvas = document.getElementById('waveform-canvas');
+const wCtx = wCanvas.getContext('2d');
+function drawWaveform(freq, amp){
+  const w = wCanvas.clientWidth || 300, h = 44;
+  wCanvas.width = w; wCanvas.height = h;
+  wCtx.clearRect(0,0,w,h);
+  wCtx.strokeStyle = '#3FD2C7';
+  wCtx.lineWidth = 1.6;
+  wCtx.beginPath();
+  const cycles = Math.max(3, Math.min(14, freq/14));
+  const A = Math.min(h/2-4, (amp/40)*(h/2-4));
+  for(let x=0;x<w;x++){
+    const t = x/w;
+    const y = h/2 + Math.sin(t*Math.PI*2*cycles)*A*Math.min(1, (x/w)*3, ((w-x)/w)*3+0.15);
+    if(x===0) wCtx.moveTo(x,y); else wCtx.lineTo(x,y);
+  }
+  wCtx.stroke();
+}
+
+/* ===================== SIGNAL FLOW / SONAR ACTIVATION ===================== */
+const SIGNAL_CHAIN = ['sensorNose','controller','payload','dac','frontend','amplifier','transducer'];
+let sonarActive = false;
+const btnSonar = document.getElementById('btn-sonar');
+if (btnSonar) {
+  btnSonar.addEventListener('click', ()=>{
+    if(sonarActive) return;
+    runSignalFlow();
+  });
+}
+function runSignalFlow(){
+  sonarActive = true;
+  if (btnSonar) {
+    btnSonar.classList.add('sonar-active');
+    btnSonar.textContent = '📡 Transmitting…';
+  }
+  SIGNAL_CHAIN.forEach((key, i)=>{
+    setTimeout(()=>{
+      const g = interactiveParts.find(p=>p.userData.key===key);
+      setEmissive(g, true);
+      setTimeout(()=>{ if(g!==selectedGroup) setEmissive(g,false); }, 420);
+      if(key==='transducer'){
+        spawnAcousticRing();
+        setTimeout(()=>{
+          sonarActive=false;
+          if (btnSonar) {
+            btnSonar.classList.remove('sonar-active');
+            btnSonar.textContent='📡 Activate sonar';
+          }
+        }, 700);
+      }
+    }, i*260);
+  });
+}
+
+const rings = [];
+function spawnAcousticRing(){
+  const g = interactiveParts.find(p=>p.userData.key==='transducer');
+  const worldPos = new THREE.Vector3();
+  g.getWorldPosition(worldPos);
+  const ringGeo = new THREE.RingGeometry(0.4,0.5,32);
+  const ringMat = new THREE.MeshBasicMaterial({color:0x3FD2C7, transparent:true, opacity:0.8, side:THREE.DoubleSide});
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.copy(worldPos);
+  ring.position.x += 0.3;
+  ring.rotation.y = Math.PI/2;
+  ring.userData.life = 0;
+  scene.add(ring);
+  rings.push(ring);
+}
+
+/* ===================== ANIMATE LOOP ===================== */
+function animate(){
+  requestAnimationFrame(animate);
+
+  explodeCurrent += (explodeTarget - explodeCurrent) * 0.08;
+  interactiveParts.forEach(g=>{
+    const off = g.userData.explodeOffset;
+    g.position.set(
+      g.userData.basePos.x + off.x*explodeCurrent,
+      g.userData.basePos.y + off.y*explodeCurrent,
+      g.userData.basePos.z + off.z*explodeCurrent
+    );
+  });
+
+  if(autoRotate) auv.rotation.y += 0.004;
+  particles.rotation.y += 0.0004;
+
+  for(let i=rings.length-1;i>=0;i--){
+    const r = rings[i];
+    r.userData.life += 0.02;
+    const s = 1 + r.userData.life*6;
+    r.scale.set(s,s,s);
+    r.material.opacity = Math.max(0, 0.8 - r.userData.life*1.1);
+    if(r.userData.life > 0.75){
+      scene.remove(r);
+      rings.splice(i,1);
+    }
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+updateEnv();
+
+/* ===================== RESIZE ===================== */
+window.addEventListener('resize', ()=>{
+  camera.aspect = wrap.clientWidth/wrap.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+});
+
+/* hide hint after first interaction */
+let hintHidden=false;
+controls.addEventListener('start', ()=>{
+  if(!hintHidden){ document.getElementById('hint').classList.add('hidden'); hintHidden=true; }
+});
+</script>
+</body>
+</html>

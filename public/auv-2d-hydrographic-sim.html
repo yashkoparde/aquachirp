@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AquaChirp Hydrographic Simulator</title>
+<style>
+  :root {
+    --surface-1: #0A0E14;
+    --surface-2: #0B1F3A;
+    --border: #1e293b;
+    --text-primary: #E8EEF2;
+    --text-secondary: #8FA3B8;
+    --text-muted: #64748b;
+    --text-accent: #17A9C9;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0B1F3A;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace, system-ui, sans-serif;
+    padding: 12px;
+    user-select: none;
+  }
+  .readout-bar {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    padding: 0.75rem 1rem; background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 0.75rem;
+  }
+  .readout-items { display: flex; gap: 18px; flex-wrap: wrap; flex: 1; }
+  .readout-label { font-size: 11px; color: var(--text-muted); }
+  .readout-val { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+  .freq-badge { text-align: right; }
+  .freq-val { font-size: 24px; font-weight: 800; color: var(--text-accent); }
+  .main-grid { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .canvas-container { flex: 2; min-width: 280px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  .controls-panel {
+    flex: 1; min-width: 220px; background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .ctrl-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .demo-btn {
+    font-size: 11px; padding: 4px 10px; background: #0B1F3A; color: var(--text-accent);
+    border: 1px solid var(--text-accent); border-radius: 9999px; cursor: pointer; font-weight: 600;
+  }
+  .demo-btn:hover { background: var(--text-accent); color: #0A0E14; }
+  label { font-size: 11px; color: var(--text-secondary); display: block; margin-top: 6px; }
+  input[type=range] { width: 100%; margin-top: 2px; accent-color: var(--text-accent); cursor: pointer; }
+  .metrics-box { border-top: 1px solid var(--border); padding-top: 8px; font-size: 11px; color: var(--text-secondary); margin-top: 8px; }
+  .metric-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .graphs-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+  .graph-box { flex: 1; min-width: 260px; }
+  .graph-title { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  canvas { display: block; background: var(--surface-1); border-radius: var(--radius); border: 1px solid var(--border); }
+  .disclaimer { font-size: 10px; color: var(--text-muted); margin-top: 8px; text-align: center; font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="readout-bar">
+  <div class="readout-items">
+    <div><div class="readout-label">Depth</div><div id="rDepth" class="readout-val">20 m</div></div>
+    <div><div class="readout-label">Temperature</div><div id="rTemp" class="readout-val">26.0 °C</div></div>
+    <div><div class="readout-label">Pressure (auto)</div><div id="rPressure" class="readout-val">3.0 bar</div></div>
+    <div><div class="readout-label">Turbidity</div><div id="rTurb" class="readout-val" style="color:#3FD98B">Clear</div></div>
+    <div><div class="readout-label">Battery</div><div id="rBatt" class="readout-val" style="color:#FFB100">90%</div></div>
+  </div>
+  <div class="freq-badge">
+    <div class="readout-label">Recommended frequency</div>
+    <div id="rFreq" class="freq-val">500 kHz</div>
+  </div>
+</div>
+
+<div class="main-grid">
+  <div class="canvas-container">
+    <canvas id="scene" style="width:100%;height:290px"></canvas>
+  </div>
+  <div class="controls-panel" id="controls">
+    <div>
+      <div class="ctrl-head">
+        <span style="font-size:12px;font-weight:700;color:var(--text-primary)">Interactive Controls</span>
+        <button id="demoBtn" class="demo-btn">▶ Auto demo</button>
+      </div>
+      <label>Depth (m)</label>
+      <input type="range" id="depth" min="0" max="1000" step="10" value="20">
+      <label>Temperature (°C)</label>
+      <input type="range" id="temp" min="0" max="30" step="0.5" value="26">
+      <label>Turbidity</label>
+      <input type="range" id="turb" min="0" max="100" step="1" value="8">
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted)"><span>Clear</span><span>Moderate</span><span>Turbid</span><span>Murky</span></div>
+      <label>Battery (%)</label>
+      <input type="range" id="batt" min="0" max="100" step="1" value="90">
+    </div>
+
+    <div class="metrics-box">
+      <div class="metric-row"><span>Sweep</span><span id="rSweep" style="color:var(--text-primary);font-weight:600">400–600 kHz</span></div>
+      <div class="metric-row"><span>Pulse duration</span><span id="rDur" style="color:var(--text-primary);font-weight:600">200 µs</span></div>
+      <div class="metric-row"><span>Power mode</span><span id="rPower" style="color:var(--text-accent);font-weight:700">MEDIUM</span></div>
+      <div class="metric-row"><span>Waveform</span><span style="color:var(--text-primary);font-weight:600">LFM chirp</span></div>
+      <div class="metric-row"><span>Sound velocity</span><span id="rVel" style="color:var(--text-primary);font-weight:600">1560 m/s</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="graphs-grid">
+  <div class="graph-box">
+    <div class="graph-title">Oscilloscope, LFM chirp pulse</div>
+    <canvas id="osc" style="width:100%;height:130px"></canvas>
+  </div>
+  <div class="graph-box">
+    <div class="graph-title">Frequency spectrum, 0–700 kHz</div>
+    <canvas id="fft" style="width:100%;height:130px"></canvas>
+  </div>
+</div>
+
+<div class="disclaimer">Engineering demonstration model for prototype evaluation. Parameter recommendations follow transparent decision logic and Mackenzie hydrographic sound speed approximations.</div>
+
+<script>
+(function(){
+var depthEl=document.getElementById('depth'),tempEl=document.getElementById('temp'),turbEl=document.getElementById('turb'),battEl=document.getElementById('batt');
+var state={depth:20,temp:26,turb:8,batt:90};
+var disp={freq:500,fStart:400,fEnd:600,dur:200,amp:0.4};
+var Fs=2000000,NFFT=4096;
+
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+function model(){
+  var t=state.turb/100;
+  var freq=lerp(500,100,t);
+  var bw=lerp(200,40,t);
+  var fStart=freq-bw/2, fEnd=freq+bw/2;
+  var dur=lerp(200,1000,t)*(1+0.15*state.depth/1000);
+  var battF=state.batt/100;
+  var ampBase=lerp(0.4,1.0,t);
+  var amp=ampBase*(0.5+0.5*battF);
+  var pressure=1.013+state.depth*0.0981;
+  var vel=1449+4.6*state.temp-0.055*state.temp*state.temp;
+  var power=state.batt<=30?'LOW (ECO Save)':((state.turb>60||state.depth>500)?'HIGH':'MEDIUM');
+  var turbLabel=state.turb<25?'Clear':(state.turb<50?'Moderate':(state.turb<75?'Turbid':'Very murky'));
+  return {freq:freq,fStart:fStart,fEnd:fEnd,dur:dur,amp:amp,pressure:pressure,vel:vel,power:power,turbLabel:turbLabel};
+}
+
+function fmt(v,d){return Number(v).toFixed(d===undefined?0:d);}
+
+function updateReadouts(m){
+  document.getElementById('rDepth').textContent=fmt(state.depth)+' m';
+  document.getElementById('rTemp').textContent=fmt(state.temp,1)+' °C';
+  document.getElementById('rPressure').textContent=fmt(m.pressure,1)+' bar';
+  document.getElementById('rTurb').textContent=m.turbLabel;
+  document.getElementById('rBatt').textContent=fmt(state.batt)+'%';
+  document.getElementById('rFreq').textContent=fmt(disp.freq)+' kHz';
+  document.getElementById('rSweep').textContent=fmt(disp.fStart)+'–'+fmt(disp.fEnd)+' kHz';
+  document.getElementById('rDur').textContent=fmt(disp.dur)+' µs';
+  document.getElementById('rPower').textContent=m.power;
+  document.getElementById('rVel').textContent=fmt(m.vel)+' m/s';
+}
+
+var sceneCanvas=document.getElementById('scene');
+var sceneCtx=sceneCanvas.getContext('2d');
+var oscCanvas=document.getElementById('osc');
+var oscCtx=oscCanvas.getContext('2d');
+var fftCanvas=document.getElementById('fft');
+var fftCtx=fftCanvas.getContext('2d');
+
+function resizeCanvases(){
+  if(sceneCanvas.parentElement){
+    sceneCanvas.width=sceneCanvas.parentElement.clientWidth;
+    sceneCanvas.height=sceneCanvas.parentElement.clientHeight||290;
+  }
+  if(oscCanvas.parentElement){
+    oscCanvas.width=oscCanvas.parentElement.clientWidth;
+    oscCanvas.height=130;
+  }
+  if(fftCanvas.parentElement){
+    fftCanvas.width=fftCanvas.parentElement.clientWidth;
+    fftCanvas.height=130;
+  }
+}
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+var particles=[];
+for(var i=0;i<70;i++)particles.push({x:Math.random()*640,y:Math.random()*300,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*4,s:1+Math.random()*2});
+var pulses=[];
+var lastSpawn=0;
+var auvX=80,auvDir=1,auvT=0;
+
+function mixColor(c1,c2,t){return [Math.round(lerp(c1[0],c2[0],t)),Math.round(lerp(c1[1],c2[1],t)),Math.round(lerp(c1[2],c2[2],t))];}
+
+function drawScene(m,dt,now){
+  var SW=sceneCanvas.width, SH=sceneCanvas.height;
+  var depthF=clamp(state.depth/1000,0,1);
+  var turbF=state.turb/100;
+  var shallowTop=[70,170,220],deepTop=[4,18,38];
+  var shallowBot=[10,80,120],deepBot=[1,6,16];
+  var top=mixColor(shallowTop,deepTop,depthF);
+  var bot=mixColor(shallowBot,deepBot,depthF);
+  var murk=[74,58,30];
+  top=mixColor(top,murk,turbF*0.55);
+  bot=mixColor(bot,murk,turbF*0.55);
+  var grad=sceneCtx.createLinearGradient(0,0,0,SH);
+  grad.addColorStop(0,'rgb('+top.join(',')+')');
+  grad.addColorStop(1,'rgb('+bot.join(',')+')');
+  sceneCtx.fillStyle=grad;
+  sceneCtx.fillRect(0,0,SW,SH);
+
+  if(depthF<0.2){
+    var rayAlpha=(0.2-depthF)/0.2*0.16;
+    sceneCtx.fillStyle='rgba(255,255,255,'+rayAlpha+')';
+    for(var r=0;r<4;r++){
+      sceneCtx.beginPath();
+      var rx=(SW/4)*r+80;
+      sceneCtx.moveTo(rx,0);
+      sceneCtx.lineTo(rx+50,0);
+      sceneCtx.lineTo(rx-40,SH);
+      sceneCtx.lineTo(rx-110,SH);
+      sceneCtx.closePath();
+      sceneCtx.fill();
+    }
+  }
+
+  if(depthF<0.18){
+    sceneCtx.fillStyle='rgba(20,50,40,0.9)';
+    sceneCtx.beginPath();
+    sceneCtx.moveTo(0,SH);
+    for(var cx=0;cx<=SW;cx+=40){sceneCtx.lineTo(cx,SH-20-Math.abs(Math.sin(cx*0.05))*22);}
+    sceneCtx.lineTo(SW,SH);
+    sceneCtx.closePath();
+    sceneCtx.fill();
+  }
+
+  var turbAlpha=0.15+turbF*0.5;
+  sceneCtx.fillStyle='rgba(120,100,60,'+Math.min(turbAlpha,0.6)+')';
+  var activeParticles=Math.round(10+turbF*60);
+  for(var p=0;p<activeParticles;p++){
+    var pt=particles[p];
+    pt.x+=pt.vx*dt*0.05; pt.y+=pt.vy*dt*0.05;
+    if(pt.x<0)pt.x+=SW; if(pt.x>SW)pt.x-=SW;
+    if(pt.y<0)pt.y+=SH; if(pt.y>SH)pt.y-=SH;
+    sceneCtx.beginPath();
+    sceneCtx.arc(pt.x,pt.y,pt.s,0,Math.PI*2);
+    sceneCtx.fill();
+  }
+
+  var spawnInterval=lerp(180,650,1-clamp((disp.freq-100)/400,0,1));
+  if(now-lastSpawn>spawnInterval){
+    lastSpawn=now;
+    pulses.push({r:14,born:now,x:0,y:0});
+  }
+
+  auvT+=dt*0.001;
+  auvX+=auvDir*dt*0.045;
+  if(auvX>SW-40){auvDir=-1;} if(auvX<40){auvDir=1;}
+  var auvY=SH*0.42+Math.sin(auvT*1.4)*10;
+  for(var pi=pulses.length-1;pi>=0;pi--){
+    var pu=pulses[pi];
+    var age=now-pu.born;
+    pu.r=14+age*0.09;
+    var alpha=1-pu.r/220;
+    if(alpha<=0){pulses.splice(pi,1);continue;}
+    sceneCtx.strokeStyle='rgba(120,220,240,'+Math.max(alpha*0.55,0)+')';
+    sceneCtx.lineWidth=1.5;
+    sceneCtx.beginPath();
+    sceneCtx.ellipse(auvX+(auvDir>0?36:-36),auvY,pu.r,pu.r*0.55,0,0,Math.PI*2);
+    sceneCtx.stroke();
+  }
+
+  sceneCtx.save();
+  sceneCtx.translate(auvX,auvY);
+  sceneCtx.scale(auvDir,1);
+  sceneCtx.fillStyle='#d8dfe6';
+  sceneCtx.beginPath();
+  sceneCtx.ellipse(0,0,34,11,0,0,Math.PI*2);
+  sceneCtx.fill();
+  sceneCtx.fillStyle='#9aa7b3';
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(-10,-9);
+  sceneCtx.lineTo(-26,-22);
+  sceneCtx.lineTo(-14,-9);
+  sceneCtx.closePath();
+  sceneCtx.fill();
+  sceneCtx.fillStyle='#7fe8ff';
+  sceneCtx.beginPath();
+  sceneCtx.arc(30,0,3.2,0,Math.PI*2);
+  sceneCtx.fill();
+  sceneCtx.restore();
+}
+
+function buildChirpSamples(m){
+  var durSec=disp.dur/1e6;
+  var N=Math.max(8,Math.round(durSec*Fs));
+  var fS=disp.fStart*1000, fE=disp.fEnd*1000;
+  var arr=new Float32Array(N);
+  for(var n=0;n<N;n++){
+    var tt=n/Fs;
+    var phase=2*Math.PI*(fS*tt+(fE-fS)*tt*tt/(2*durSec));
+    var w=0.54-0.46*Math.cos(2*Math.PI*tt/durSec);
+    arr[n]=disp.amp*w*Math.cos(phase);
+  }
+  return arr;
+}
+
+function fft(re,im){
+  var n=re.length;
+  for(var i=1,j=0;i<n;i++){
+    var bit=n>>1;
+    for(;j&bit;bit>>=1) j^=bit;
+    j^=bit;
+    if(i<j){var tr=re[i];re[i]=re[j];re[j]=tr;var ti=im[i];im[i]=im[j];im[j]=ti;}
+  }
+  for(var len=2;len<=n;len<<=1){
+    var ang=-2*Math.PI/len;
+    var wr=Math.cos(ang),wi=Math.sin(ang);
+    for(var i2=0;i2<n;i2+=len){
+      var curWr=1,curWi=0;
+      for(var j2=0;j2<len/2;j2++){
+        var ur=re[i2+j2],ui=im[i2+j2];
+        var vr=re[i2+j2+len/2]*curWr-im[i2+j2+len/2]*curWi;
+        var vi=re[i2+j2+len/2]*curWi+im[i2+j2+len/2]*curWr;
+        re[i2+j2]=ur+vr; im[i2+j2]=ui+vi;
+        re[i2+j2+len/2]=ur-vr; im[i2+j2+len/2]=ui-vi;
+        var nwr=curWr*wr-curWi*wi, nwi=curWr*wi+curWi*wr;
+        curWr=nwr; curWi=nwi;
+      }
+    }
+  }
+}
+
+function drawOsc(samples){
+  var w=oscCtx.canvas.width,h=oscCtx.canvas.height;
+  oscCtx.clearRect(0,0,w,h);
+  oscCtx.strokeStyle='#1e293b';
+  oscCtx.lineWidth=1;
+  oscCtx.beginPath();oscCtx.moveTo(0,h/2);oscCtx.lineTo(w,h/2);oscCtx.stroke();
+  oscCtx.strokeStyle='#39c0ff';
+  oscCtx.lineWidth=1.5;
+  oscCtx.beginPath();
+  var N=samples.length;
+  for(var i=0;i<N;i++){
+    var x=i/(N-1)*w;
+    var y=h/2-samples[i]*(h/2-6);
+    if(i===0)oscCtx.moveTo(x,y); else oscCtx.lineTo(x,y);
+  }
+  oscCtx.stroke();
+}
+
+function drawFFT(samples){
+  var re=new Float64Array(NFFT),im=new Float64Array(NFFT);
+  for(var i=0;i<Math.min(samples.length,NFFT);i++) re[i]=samples[i];
+  fft(re,im);
+  var mag=new Float64Array(NFFT/2);
+  for(var k=0;k<NFFT/2;k++) mag[k]=Math.sqrt(re[k]*re[k]+im[k]*im[k]);
+  var w=fftCtx.canvas.width,h=fftCtx.canvas.height;
+  fftCtx.clearRect(0,0,w,h);
+  var binHz=Fs/NFFT;
+  var maxBin=Math.min(mag.length-1,Math.round(700000/binHz));
+  var maxMag=0;
+  for(var k2=0;k2<=maxBin;k2++) if(mag[k2]>maxMag) maxMag=mag[k2];
+  if(maxMag===0)maxMag=1;
+  fftCtx.strokeStyle='#ff9550';
+  fftCtx.lineWidth=1.5;
+  fftCtx.beginPath();
+  for(var k3=0;k3<=maxBin;k3++){
+    var x=k3/maxBin*w;
+    var y=h-(mag[k3]/maxMag)*(h-8)-4;
+    if(k3===0)fftCtx.moveTo(x,y); else fftCtx.lineTo(x,y);
+  }
+  fftCtx.stroke();
+}
+
+var demoOn=false,demoTimer=null;
+var presets=[
+  {name:'Clear shallow',depth:20,temp:26,turb:8,batt:90},
+  {name:'Deep ocean',depth:800,temp:6,turb:20,batt:80},
+  {name:'Turbid water',depth:100,temp:18,turb:85,batt:70},
+  {name:'Low battery',depth:150,temp:20,turb:50,batt:28}
+];
+var presetIdx=0;
+
+function setSliders(p){
+  depthEl.value=p.depth; tempEl.value=p.temp; turbEl.value=p.turb; battEl.value=p.batt;
+  state.depth=p.depth; state.temp=p.temp; state.turb=p.turb; state.batt=p.batt;
+}
+
+function runDemoStep(){
+  if(!demoOn)return;
+  setSliders(presets[presetIdx]);
+  presetIdx=(presetIdx+1)%presets.length;
+  demoTimer=setTimeout(runDemoStep,4200);
+}
+
+document.getElementById('demoBtn').addEventListener('click',function(){
+  demoOn=!demoOn;
+  var btn=document.getElementById('demoBtn');
+  if(demoOn){
+    btn.textContent='⏸ Pause demo';
+    presetIdx=0;
+    runDemoStep();
+  } else {
+    btn.textContent='▶ Auto demo';
+    clearTimeout(demoTimer);
+  }
+});
+
+function notifyParent(){
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({
+      type: 'AQUACHIRP_ENV_CHANGE',
+      depth: state.depth,
+      temp: state.temp,
+      turb: state.turb,
+      batt: state.batt
+    }, '*');
+  }
+}
+
+[depthEl,tempEl,turbEl,battEl].forEach(function(el){
+  el.addEventListener('input',function(){
+    state.depth=Number(depthEl.value); state.temp=Number(tempEl.value); state.turb=Number(turbEl.value); state.batt=Number(battEl.value);
+    notifyParent();
+  });
+});
+
+window.addEventListener('message', function(e){
+  if (e.data && e.data.type === 'SET_AQUACHIRP_ENV') {
+    if (e.data.depth !== undefined) { state.depth = e.data.depth; depthEl.value = e.data.depth; }
+    if (e.data.temp !== undefined) { state.temp = e.data.temp; tempEl.value = e.data.temp; }
+    if (e.data.turb !== undefined) { state.turb = e.data.turb; turbEl.value = e.data.turb; }
+    if (e.data.batt !== undefined) { state.batt = e.data.batt; battEl.value = e.data.batt; }
+  }
+});
+
+var lastFrame=null;
+function frame(now){
+  if(lastFrame===null)lastFrame=now;
+  var dt=now-lastFrame;
+  lastFrame=now;
+  var m=model();
+  disp.freq+=(m.freq-disp.freq)*0.06;
+  disp.fStart+=(m.fStart-disp.fStart)*0.06;
+  disp.fEnd+=(m.fEnd-disp.fEnd)*0.06;
+  disp.dur+=(m.dur-disp.dur)*0.06;
+  disp.amp+=(m.amp-disp.amp)*0.06;
+  drawScene(m,dt,now);
+  var samples=buildChirpSamples(m);
+  drawOsc(samples);
+  drawFFT(samples);
+  updateReadouts(m);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
