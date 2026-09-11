@@ -28,9 +28,48 @@ export interface EnvironmentalData {
 export type WaveformType = 
   | 'LFM_UP_CHIRP' 
   | 'LFM_DOWN_CHIRP' 
+  | 'GEOMETRIC_SWEEP'
+  | 'PHASE_CODED'
   | 'HYPERBOLIC_CHIRP' 
   | 'CW_TONE_BURST'
   | 'RICKER_WAVELET';
+
+export type WindowType = 'NONE' | 'HANN' | 'HAMMING' | 'BLACKMAN';
+
+export const getWaveformName = (w: WaveformType): string => {
+  switch (w) {
+    case 'LFM_UP_CHIRP':
+    case 'LFM_DOWN_CHIRP':
+      return 'LFM Chirp';
+    case 'GEOMETRIC_SWEEP':
+      return 'GeoSweep';
+    case 'PHASE_CODED':
+      return 'PhaseCode';
+    case 'HYPERBOLIC_CHIRP':
+      return 'Hyperbolic Chirp';
+    case 'CW_TONE_BURST':
+      return 'Tone Burst';
+    case 'RICKER_WAVELET':
+      return 'Ricker Wavelet';
+    default:
+      return '?';
+  }
+};
+
+export const getWindowName = (win: WindowType): string => {
+  switch (win) {
+    case 'NONE':
+      return 'None';
+    case 'HANN':
+      return 'Hann';
+    case 'HAMMING':
+      return 'Hamming';
+    case 'BLACKMAN':
+      return 'Blackman';
+    default:
+      return '?';
+  }
+};
 
 export type PowerMode = 'LOW' | 'NOMINAL' | 'BOOST' | 'ECO_CONSERVE';
 
@@ -40,6 +79,7 @@ export interface SonarProfile {
   code: string;
   description: string;
   waveformType: WaveformType;
+  windowType?: WindowType;
   startFreqKhz: number; // e.g. 180
   endFreqKhz: number; // e.g. 220
   pulseDurationMs: number; // e.g. 2.5 ms
