@@ -134,11 +134,18 @@ export const SonarProfilePanel: React.FC<SonarProfilePanelProps> = ({
           </div>
 
           <div className="bg-[#0B1F3A]/60 p-2 rounded border border-slate-800">
-            <span className="text-[10px] text-[#8FA3B8] block">SWEEP RATE (k)</span>
+            <span className="text-[10px] text-[#8FA3B8] block">SWEEP RATE (k) & WIN</span>
             <span className="text-[#E8EEF2] font-semibold text-xs">
               {activeProfile.sweepRateKhzPerMs.toFixed(2)} <span className="text-[10px] text-slate-400">kHz/ms</span>
             </span>
-            <span className="text-[10px] text-[#FFB100] block">{activeProfile.waveformType}</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-[#FFB100] font-mono">{activeProfile.waveformType}</span>
+              {activeProfile.windowType && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                  WIN: {activeProfile.windowType}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="bg-[#0B1F3A]/60 p-2 rounded border border-slate-800">
@@ -179,20 +186,17 @@ export const SonarProfilePanel: React.FC<SonarProfilePanelProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5">
           {Object.values(SONAR_PROFILE_PRESETS).map((preset) => {
             const isSelected = activeProfile.id === preset.id;
             return (
               <button
                 key={preset.id}
-                disabled={!isManualOverride}
                 onClick={() => onSelectManualProfile(preset.id)}
                 className={`p-1.5 rounded border text-left flex flex-col justify-between transition-all ${
                   isSelected
                     ? 'bg-[#17A9C9]/20 border-[#17A9C9] text-[#E8EEF2] shadow-sm'
-                    : isManualOverride
-                    ? 'bg-[#0A0E14] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                    : 'bg-[#0A0E14]/40 border-slate-800/60 text-slate-500 opacity-60 cursor-default'
+                    : 'bg-[#0A0E14] border-slate-800 text-slate-400 hover:border-[#17A9C9]/60 hover:text-slate-200 cursor-pointer'
                 }`}
               >
                 <div className="flex items-center justify-between">
