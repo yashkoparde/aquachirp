@@ -88,7 +88,7 @@ flowchart TD
 - 🛸 **Cinematic Boot & Connection Desk**: Clean system startup screen with hardware bus handshake setup and saved mission archives.
 - 🔮 **3D Interactive AUV Explorer**: Three.js CAD payload inspection view with assembled and exploded subsystem disassembly modes.
 - 🌊 **Real-Time Hydrographic Sensing**: In-situ monitoring of water column depth, CTD temperature, barometric pressure, turbidity clutter, and battery reserves.
-- ⚡ **Adaptive Decision Engine**: Automatic LFM Chirp bandwidth ($\Delta f$), sweep rate ($k$), pulse duration ($\tau$), and ECO power mode adjustments upon detecting environmental stress or $\le 30\%$ battery reserves.
+- ⚡ **Adaptive Decision Engine**: Automatic LFM Chirp, GeoSweep, PhaseCode, and windowing envelope (Hann, Hamming, Blackman) adjustments upon detecting environmental stress or $\le 30\%$ battery reserves.
 - 📈 **Signal Oscilloscope & Waterfall Echogram**: High-resolution time-domain waveform display, 0–700 kHz FFT spectral density curve, and broadside acoustic waterfall returns.
 - 📁 **Mission Debrief Desk**: Synchronous telemetry log database with custom waypoint tagging, interactive range filters, and 1-click CSV/JSON export.
 
