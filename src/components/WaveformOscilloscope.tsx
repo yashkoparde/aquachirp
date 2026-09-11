@@ -18,12 +18,14 @@ interface WaveformOscilloscopeProps {
   profile: SonarProfile;
   pingCount: number;
   isStreaming: boolean;
+  onSelectProfile?: (profileId: string) => void;
 }
 
 export const WaveformOscilloscope: React.FC<WaveformOscilloscopeProps> = ({
   profile,
   pingCount,
   isStreaming,
+  onSelectProfile,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const waterfallCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -154,30 +156,50 @@ export const WaveformOscilloscope: React.FC<WaveformOscilloscopeProps> = ({
             for (let i = 0; i < points; i++) {
               const x = (i / points) * width;
               const t = (i / points) * totalTimeMs; // time in ms
+              const normT = (i / points); // 0.0 to 1.0 continuous across whole screen
 
-              let sample = 0;
-
-              // Pulse envelope: active within duration
-              const pulseStart = 0.4;
-              const pulseEnd = pulseStart + duration;
-
-              if (t >= pulseStart && t <= pulseEnd) {
-                const relT = t - pulseStart;
-                // Envelope (Tukey / Sine taper)
-                const taper = Math.sin((relT / duration) * Math.PI);
-                
-                // Frequency sweep calculation
-                // Phase integral: phi(t) = 2*pi*(f0*t + 0.5*k*t^2)
-                // We scale frequency down visually for oscilloscope screen readability
-                const visualFreqScale = 0.035; 
-                const instFreq = (f0 + k * relT) * visualFreqScale;
-                const phase = 2 * Math.PI * (instFreq * relT) + localPhase;
-
-                sample = Math.sin(phase) * Math.pow(taper, 0.5) * (profile.amplitudePercent / 100);
-              } else {
-                // Pre/post pulse noise floor
-                sample = (Math.random() - 0.5) * 0.03;
+              // Windowing envelope calculation across continuous screen
+              let windowEnvelope = 1.0;
+              const winType = profile.windowType || 'HANN';
+              if (winType === 'HANN') {
+                windowEnvelope = 0.85 + 0.15 * Math.sin(Math.PI * normT);
+              } else if (winType === 'HAMMING') {
+                windowEnvelope = 0.88 + 0.12 * Math.cos(2 * Math.PI * normT);
+              } else if (winType === 'BLACKMAN') {
+                windowEnvelope = 0.82 + 0.18 * Math.cos(4 * Math.PI * normT);
               }
+
+              // Continuous Waveform Synthesis Across Entire Horizontal Timebase
+              let carrierWave = 0;
+              const wfType = profile.waveformType;
+              const relT = t;
+
+              if (wfType === 'GEOMETRIC_SWEEP') {
+                // Geometric / Logarithmic Sweep f(t) = f0 * e^(alpha * t)
+                const alpha = Math.log(Math.max(0.1, f1) / Math.max(0.1, f0)) / Math.max(0.1, totalTimeMs);
+                const instFreq = f0 * Math.exp(alpha * relT) * 0.035;
+                carrierWave = Math.sin(2 * Math.PI * instFreq * relT + localPhase);
+              } else if (wfType === 'PHASE_CODED') {
+                // Barker / BPSK PhaseCode 13-bit continuous sequence
+                const barkerCode = [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1];
+                const chipIndex = Math.floor(normT * barkerCode.length) % barkerCode.length;
+                const phaseShift = barkerCode[chipIndex] === 1 ? 0 : Math.PI;
+                const carrierFreq = ((f0 + f1) / 2) * 0.035;
+                carrierWave = Math.sin(2 * Math.PI * carrierFreq * relT + phaseShift + localPhase);
+              } else if (wfType === 'HYPERBOLIC_CHIRP') {
+                const instFreq = (f0 * f1 * totalTimeMs) / Math.max(0.001, (f1 * totalTimeMs - (f1 - f0) * relT)) * 0.035;
+                carrierWave = Math.sin(2 * Math.PI * instFreq * relT + localPhase);
+              } else if (wfType === 'CW_TONE_BURST') {
+                const carrierFreq = f0 * 0.035;
+                carrierWave = Math.sin(2 * Math.PI * carrierFreq * relT + localPhase);
+              } else {
+                // Linear Frequency Modulation (LFM Chirp)
+                const kCont = (f1 - f0) / Math.max(0.1, totalTimeMs);
+                const instFreq = (f0 + kCont * relT) * 0.035;
+                carrierWave = Math.sin(2 * Math.PI * instFreq * relT + localPhase);
+              }
+
+              const sample = carrierWave * windowEnvelope * (profile.amplitudePercent / 100);
 
               const y = centerY - sample * maxAmplitudePx;
               if (i === 0) {
@@ -201,7 +223,7 @@ export const WaveformOscilloscope: React.FC<WaveformOscilloscopeProps> = ({
             ctx.fillStyle = '#8FA3B8';
             ctx.font = '10px "JetBrains Mono", monospace';
             ctx.fillText(`CH1: 500mV/div  TIME: ${timebaseMsPerDiv}ms/div  TRIGGER: AUTO`, 15, height - 12);
-            ctx.fillText(`PULSE: ${profile.pulseDurationMs.toFixed(1)}ms | SWEEP: ${profile.startFreqKhz}k→${profile.endFreqKhz}k | DAC: 2.4MSps`, width - 360, height - 12);
+            ctx.fillText(`WF: ${profile.waveformType} | WIN: ${profile.windowType || 'NONE'} | PULSE: ${profile.pulseDurationMs.toFixed(1)}ms | SWEEP: ${profile.startFreqKhz}k→${profile.endFreqKhz}k`, width - 420, height - 12);
 
           } else if (viewMode === 'spectrum') {
             // RENDER FREQUENCY SPECTRUM (FFT)
@@ -376,8 +398,57 @@ export const WaveformOscilloscope: React.FC<WaveformOscilloscopeProps> = ({
           </div>
         </div>
 
-        {/* Display Mode Switcher */}
-        <div className="flex items-center gap-2">
+        {/* Interactive Graph & Waveform Type Switcher Controls */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          {/* Waveform Segment Fast-Switch Buttons */}
+          <div className="flex items-center bg-[#0A0E14] p-0.5 rounded-lg border border-slate-800 text-[11px] overflow-x-auto">
+            <button
+              onClick={() => onSelectProfile && onSelectProfile('P1_SHALLOW')}
+              className={`px-2 py-1 rounded transition-all font-mono whitespace-nowrap ${
+                profile.waveformType === 'LFM_UP_CHIRP' || profile.waveformType === 'LFM_DOWN_CHIRP'
+                  ? 'bg-[#FFB100] text-[#0A0E14] font-bold shadow-sm'
+                  : 'text-[#8FA3B8] hover:text-[#E8EEF2]'
+              }`}
+              title="Switch Graph Segment to LFM Chirp"
+            >
+              LFM Chirp
+            </button>
+            <button
+              onClick={() => onSelectProfile && onSelectProfile('P6_GEOMETRIC_SWEEP')}
+              className={`px-2 py-1 rounded transition-all font-mono whitespace-nowrap ${
+                profile.waveformType === 'GEOMETRIC_SWEEP'
+                  ? 'bg-[#FFB100] text-[#0A0E14] font-bold shadow-sm'
+                  : 'text-[#8FA3B8] hover:text-[#E8EEF2]'
+              }`}
+              title="Switch Graph Segment to GeoSweep (Geometric Sweep)"
+            >
+              GeoSweep
+            </button>
+            <button
+              onClick={() => onSelectProfile && onSelectProfile('P7_PHASE_CODED')}
+              className={`px-2 py-1 rounded transition-all font-mono whitespace-nowrap ${
+                profile.waveformType === 'PHASE_CODED'
+                  ? 'bg-[#FFB100] text-[#0A0E14] font-bold shadow-sm'
+                  : 'text-[#8FA3B8] hover:text-[#E8EEF2]'
+              }`}
+              title="Switch Graph Segment to PhaseCode (13-bit Barker BPSK)"
+            >
+              PhaseCode
+            </button>
+            <button
+              onClick={() => onSelectProfile && onSelectProfile('P4_TURBID_CLUTTER')}
+              className={`px-2 py-1 rounded transition-all font-mono whitespace-nowrap ${
+                profile.waveformType === 'HYPERBOLIC_CHIRP'
+                  ? 'bg-[#FFB100] text-[#0A0E14] font-bold shadow-sm'
+                  : 'text-[#8FA3B8] hover:text-[#E8EEF2]'
+              }`}
+              title="Switch Graph Segment to Hyperbolic Chirp"
+            >
+              Hyperbolic
+            </button>
+          </div>
+
+          {/* View Domain Mode Switcher */}
           <div className="flex items-center bg-[#0A0E14] p-0.5 rounded-lg border border-slate-800 text-[11px]">
             <button
               onClick={() => setViewMode('oscilloscope')}
