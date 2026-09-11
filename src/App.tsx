@@ -91,6 +91,13 @@ export default function App() {
 
   // Active Sonar Profile
   const [isManualOverride, setIsManualOverride] = useState(false);
+  const isManualOverrideRef = useRef(false);
+
+  const toggleManualOverride = () => {
+    const nextVal = !isManualOverrideRef.current;
+    isManualOverrideRef.current = nextVal;
+    setIsManualOverride(nextVal);
+  };
   const [activeProfile, setActiveProfile] = useState<SonarProfile>(() => {
     return determineAdaptiveProfile({
       depth: 23.4,
@@ -296,7 +303,7 @@ export default function App() {
     }
     prevBatteryRef.current = environmental.batteryPercent;
 
-    if (!isManualOverride) {
+    if (!isManualOverrideRef.current) {
       const optimalProfile = determineAdaptiveProfile(environmental);
 
       if (optimalProfile.id !== prevProfileRef.current) {
@@ -311,7 +318,7 @@ export default function App() {
 
       setActiveProfile(optimalProfile);
     }
-  }, [environmental, isManualOverride, connectionState]);
+  }, [environmental, connectionState]);
 
   // Synchronized Mission Log Recording
   useEffect(() => {
@@ -345,6 +352,8 @@ export default function App() {
 
   // Manual Profile Selection
   const handleSelectManualProfile = (profileId: string) => {
+    isManualOverrideRef.current = true;
+    setIsManualOverride(true);
     const basePreset = SONAR_PROFILE_PRESETS[profileId];
     if (basePreset) {
       const bandwidthKhz = Math.abs(basePreset.endFreqKhz - basePreset.startFreqKhz);
@@ -582,7 +591,7 @@ export default function App() {
                     <SonarProfilePanel
                       activeProfile={activeProfile}
                       isManualOverride={isManualOverride}
-                      onToggleManualOverride={() => setIsManualOverride(!isManualOverride)}
+                      onToggleManualOverride={toggleManualOverride}
                       onSelectManualProfile={handleSelectManualProfile}
                     />
                   </div>
@@ -591,6 +600,7 @@ export default function App() {
                     profile={activeProfile}
                     pingCount={totalPings}
                     isStreaming={connectionState === 'connected' && !isStreamingPaused}
+                    onSelectProfile={handleSelectManualProfile}
                   />
 
                   <HardwareStatusPanel hardware={hardware} />
