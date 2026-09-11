@@ -28,6 +28,7 @@ export const MissionDataLog: React.FC<MissionDataLogProps> = ({
   const [newNoteText, setNewNoteText] = useState('');
   const [selectedProfileFilter, setSelectedProfileFilter] = useState('ALL');
   const tableTopRef = useRef<HTMLDivElement | null>(null);
+  const tableBottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (autoScroll && tableBottomRef.current) {
